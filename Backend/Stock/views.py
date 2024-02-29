@@ -9,8 +9,79 @@ import matplotlib.pyplot as plt
 from io import StringIO
 import pickle
 import joblib
-# model = joblib.load('Model/lstm_model.pkl')
-# joblib.dump(model, 'Model/lstm_model.pkl')
+
+
+from django.shortcuts import render
+import requests
+from bs4 import BeautifulSoup
+
+def index(request):
+ 
+    URL = "https://merolagani.com/LatestMarket.aspx"
+
+    # Make GET request to fetch the raw HTML content
+    conn = requests.get(URL)
+    soup = BeautifulSoup(conn.text, 'html.parser')
+
+    table = soup.find('table', class_='table table-hover live-trading sortable')
+
+    headers = [i.text for i in table.find_all('th')]
+
+    data = []
+    for row in table.find_all('tr', {"class": ["decrease-row", "increase-row", "nochange-row"]}):
+        row_data = {}
+        cells = row.find_all('td')
+        row_data['row_class'] = row['class'][0]  # Extracting row class for styling
+        for index, cell in enumerate(cells):
+            row_data[headers[index]] = cell.text
+        data.append(row_data)
+
+    return render(request, 'Stock/index.html', {'headers': headers, 'data': data})
+
+
+
+
+def scrape_news(request):
+    # URL of the webpage to scrape
+    url = "https://merolagani.com/NewsList.aspx"
+    
+    # Fetch the HTML content of the webpage
+    response = requests.get(url)
+    if response.status_code == 200:
+        html_content = response.text
+        
+        # Parse the HTML content
+        soup = BeautifulSoup(html_content, "html.parser")
+        
+        # Find the elements containing news articles
+        news_elements = soup.find_all("div", class_="media-news media-news-md clearfix")
+        
+        # Extract news titles, links, and images
+        news_list = []
+        for news in news_elements:
+            title = news.find("h4", class_="media-title").text.strip()
+            link = news.find("a")["href"]
+            image = news.find("img")
+            if image:
+                image_url = image["src"]
+            else:
+                # If image is not available, provide a default image URL
+                image_url = "https://via.placeholder.com/150"
+            news_list.append({"title": title, "link": link, "image_url": image_url})
+        
+        # Pass the news list to the template for rendering
+        context = {"news_list": news_list}
+        return render(request, "Stock/news.html", context)
+    else:
+   
+        return render(request, "Stock/error.html")
+
+
+
+
+
+
+
 def create_dataset(df_scaled, look_back=1):
     x_train = []
     y_train = []
