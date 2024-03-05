@@ -1,13 +1,11 @@
-{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Prediction Result</title>
+    <title>Stock Prediction Result</title>
 </head>
 <body>
-    <h1>Next Day Predicted Price: {{ prediction }}</h1>
-    <img src="{% static 'predicted_plot.png' %}" alt="Predicted Plot">
+    <h2>Predicted Price: {{ predicted_price }}</h2>
+    <img src="static/prediction_plot.png" alt="Prediction Plot">
 </body>
 </html>

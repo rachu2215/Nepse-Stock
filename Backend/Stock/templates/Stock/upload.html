@@ -9,8 +9,8 @@
 <body>
     <form method="post" enctype="multipart/form-data">
         {% csrf_token %}
-        <input type="file" name="csv_file">
-        <button type="submit">Submit</button>
+        {{ form.as_p }}
+        <button type="submit">Upload</button>
     </form>
 </body>
 </html>

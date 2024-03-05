@@ -4,16 +4,32 @@ from django.shortcuts import render
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
+from tensorflow.keras.models import model_from_json
+from tensorflow.keras.models import load_model
 
+from tensorflow.keras.layers import LSTM, Dense
+from tensorflow.keras.models import Sequential
 import matplotlib.pyplot as plt
-from io import StringIO
-import pickle
-import joblib
-
-
+from .utils import preprocess_data, train_lstm_model, plot_predictions
 from django.shortcuts import render
 import requests
 from bs4 import BeautifulSoup
+
+
+from .forms import UploadFileForm
+
+
+
+# json_file = open('Model/model.json', 'r')
+# loaded_model_json = json_file.read()
+# json_file.close()
+
+# print("Loaded model from disk")
+ 
+# evaluate loaded model on test data
+# loaded_model.compile(loss='binary_crossentropy', optimizer='rmsprop', metrics=['accuracy'])
+
+
 
 def index(request):
  
@@ -78,72 +94,38 @@ def scrape_news(request):
 
 
 
+def upload_file(request):
+    if request.method == 'POST':
+        form = UploadFileForm(request.POST, request.FILES)
+        if form.is_valid():
+            try:
+                csv_file = request.FILES['file']
+                df = pd.read_csv(csv_file)
+                df['Date'] = pd.to_datetime(df['Date'])
+                df = df.set_index('Date')
+                df = df.dropna()
 
+                sequence_length = 10
+                scaler, X_train, X_test, y_train, y_test = preprocess_data(df, sequence_length)
+                model = train_lstm_model(X_train, y_train)
 
+                train_predictions, test_predictions = model.predict(X_train), model.predict(X_test)
+                train_predictions = scaler.inverse_transform(train_predictions)
+                test_predictions = scaler.inverse_transform(test_predictions)
 
+                plot_path = plot_predictions(df, sequence_length, train_predictions, test_predictions)
 
-def create_dataset(df_scaled, look_back=1):
-    x_train = []
-    y_train = []
-    for i in range(len(df_scaled) - look_back):
-        x_train.append(df_scaled[i:i + look_back])
-        y_train.append(df_scaled[i + look_back])
-    return x_train, y_train
+                latest_data = df.head(sequence_length)
+                latest_scaled = scaler.transform(latest_data[['Open']])
+                latest_scaled = np.array(latest_scaled).reshape((1, sequence_length, 1))
+                tomorrow_prediction = model.predict(latest_scaled)
+                tomorrow_prediction = scaler.inverse_transform(tomorrow_prediction)
 
-def predict_stock(request):
-    # Load the pickled model
-    model = joblib.load('Model/lstm.joblib')
-    if request.method == 'POST' and request.FILES['csv_file']:
-        csv_file = request.FILES['csv_file']
-        
-        df = pd.read_csv(csv_file)
-        df['Date'] = pd.to_datetime(df['Date'])
-        df = df.set_index('Date')
-        df = df.dropna()
-        
-        # Preprocessing
-        scaler = MinMaxScaler()
-        df_scaled = scaler.fit_transform(df[['Open']])
-        sequence_length = 10
-        X, y = create_dataset(df_scaled, sequence_length)
+                return render(request, 'Stock/prediction_result.html', {'predicted_price': tomorrow_prediction[0], 'plot_path': plot_path})
 
-        train_size = int(len(X) * 0.8)
-        X_train, X_test = np.array(X[:train_size]), np.array(X[train_size:])
-        y_train, y_test = np.array(y[:train_size]), np.array(y[train_size:])
-
-        # Make predictions using the loaded model
-        train_predictions = model.predict(X_train)
-        test_predictions = model.predict(X_test)
-
-        train_predictions = scaler.inverse_transform(train_predictions)
-        y_train_original = scaler.inverse_transform(y_train.reshape(-1, 1))
-
-        test_predictions = scaler.inverse_transform(test_predictions)
-        y_test_original = scaler.inverse_transform(y_test.reshape(-1, 1))
-
-        # Plotting
-        plt.figure(figsize=(12, 6))
-        plt.plot(df.index[sequence_length:sequence_length+len(y_train)], y_train_original, label='Actual Train Data')
-        plt.plot(df.index[sequence_length:sequence_length+len(y_train)], train_predictions, label='Train Predictions')
-
-        test_index = df.index[sequence_length + train_size:sequence_length + train_size + len(y_test)]
-        plt.plot(test_index, y_test_original, label='Actual Test Data')
-        plt.plot(test_index, test_predictions, label='Test Predictions')
-
-        plt.title('Stock Price Prediction')
-        plt.xlabel('Date')
-        plt.ylabel('Price')
-        plt.legend()
-        plt.savefig('predicted_plot.png')
-
-        latest_data = df.tail(sequence_length)
-        latest_scaled = scaler.transform(latest_data[['Open']])
-        latest_scaled = np.array(latest_scaled).reshape((1, sequence_length, 1))
-        tomorrow_prediction = model.predict(latest_scaled)
-        tomorrow_prediction = scaler.inverse_transform(tomorrow_prediction)
-
-
-        # Render the prediction result template
-        return render(request, 'Stock/prediction_result.html', {'prediction': tomorrow_prediction[0, 0], 'plot_image': 'predicted_plot.png'})
-
-    return render(request, 'Stock/upload_csv.html')
+            except Exception as e:
+                error_message = f"An error occurred: {str(e)}"
+                return render(request, 'Stock/upload.html', {'form': form, 'error_message': error_message})
+    else:
+        form = UploadFileForm()
+    return render(request, 'Stock/upload.html', {'form': form})
