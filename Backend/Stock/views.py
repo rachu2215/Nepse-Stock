@@ -3,14 +3,8 @@
 from django.shortcuts import render
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import MinMaxScaler
-from tensorflow.keras.models import model_from_json
-from tensorflow.keras.models import load_model
-
-from tensorflow.keras.layers import LSTM, Dense
-from tensorflow.keras.models import Sequential
 import matplotlib.pyplot as plt
-from .utils import preprocess_data, train_lstm_model, plot_predictions
+from .utils import preprocess_data, train_lstm_model
 from django.shortcuts import render
 import requests
 from bs4 import BeautifulSoup
@@ -19,17 +13,7 @@ from bs4 import BeautifulSoup
 from .forms import UploadFileForm
 
 
-
-# json_file = open('Model/model.json', 'r')
-# loaded_model_json = json_file.read()
-# json_file.close()
-
-# print("Loaded model from disk")
- 
-# evaluate loaded model on test data
-# loaded_model.compile(loss='binary_crossentropy', optimizer='rmsprop', metrics=['accuracy'])
-
-
+import json
 
 def index(request):
  
@@ -66,7 +50,7 @@ def scrape_news(request):
     if response.status_code == 200:
         html_content = response.text
         
-        # Parse the HTML content
+
         soup = BeautifulSoup(html_content, "html.parser")
         
         # Find the elements containing news articles
@@ -98,34 +82,31 @@ def upload_file(request):
     if request.method == 'POST':
         form = UploadFileForm(request.POST, request.FILES)
         if form.is_valid():
-            try:
-                csv_file = request.FILES['file']
-                df = pd.read_csv(csv_file)
-                df['Date'] = pd.to_datetime(df['Date'])
-                df = df.set_index('Date')
-                df = df.dropna()
-
-                sequence_length = 10
-                scaler, X_train, X_test, y_train, y_test = preprocess_data(df, sequence_length)
-                model = train_lstm_model(X_train, y_train)
-
-                train_predictions, test_predictions = model.predict(X_train), model.predict(X_test)
-                train_predictions = scaler.inverse_transform(train_predictions)
-                test_predictions = scaler.inverse_transform(test_predictions)
-
-                plot_path = plot_predictions(df, sequence_length, train_predictions, test_predictions)
-
-                latest_data = df.head(sequence_length)
-                latest_scaled = scaler.transform(latest_data[['Open']])
-                latest_scaled = np.array(latest_scaled).reshape((1, sequence_length, 1))
-                tomorrow_prediction = model.predict(latest_scaled)
-                tomorrow_prediction = scaler.inverse_transform(tomorrow_prediction)
-
-                return render(request, 'Stock/prediction_result.html', {'predicted_price': tomorrow_prediction[0], 'plot_path': plot_path})
-
-            except Exception as e:
-                error_message = f"An error occurred: {str(e)}"
-                return render(request, 'Stock/upload.html', {'form': form, 'error_message': error_message})
+            csv_file = request.FILES['file']
+            df = pd.read_csv(csv_file)
+            df['Date'] = pd.to_datetime(df['Date'])
+            df = df.set_index('Date')
+            df = df.dropna()
+            sequence_length = 10
+            scaler, X_train, _, y_train, _ = preprocess_data(df, sequence_length)
+            model = train_lstm_model(X_train, y_train)
+            latest_data = df.tail(sequence_length)
+            latest_scaled = scaler.transform(latest_data[['Open']])
+            latest_scaled = np.array(latest_scaled).reshape((1, sequence_length, 1))
+            tomorrow_prediction = model.predict(latest_scaled)
+            tomorrow_prediction = scaler.inverse_transform(tomorrow_prediction)
+            dates = df.index[-50:].strftime('%Y-%m-%d').tolist()
+            actual_prices = df['Open'].values[-50:].tolist()
+            predicted_prices = model.predict(X_train[-50:]).flatten().tolist()
+            data = {
+                'dates': dates,
+                'actual_prices': actual_prices,
+                'predicted_prices': predicted_prices,
+                'tomorrow_prediction':float(tomorrow_prediction[0][0])
+            }
+            print (data.get('predicted_prices')[0])
+            
+            return render(request, 'Stock/prediction.html', {'data': json.dumps(data)})     
     else:
         form = UploadFileForm()
     return render(request, 'Stock/upload.html', {'form': form})

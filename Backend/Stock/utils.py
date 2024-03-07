@@ -27,16 +27,16 @@ def train_lstm_model(X_train, y_train):
     model.add(LSTM(50, activation='sigmoid'))
     model.add(Dense(1))
     model.compile(optimizer=Adam(learning_rate=0.001), loss='mse')
-    model.fit(X_train, y_train, epochs=50, batch_size=32, verbose=2)
+    model.fit(X_train, y_train, epochs=150, batch_size=32, verbose=2)
     return model
 
-def plot_predictions(df, sequence_length, train_predictions, test_predictions):
-    plt.figure(figsize=(12, 6))
-    plt.plot(df.index[sequence_length:sequence_length + len(train_predictions)], train_predictions, label='Train Predictions')
-    plt.plot(df.index[sequence_length + len(train_predictions):], test_predictions, label='Test Predictions')
-    plt.plot(df['Open'], label='Actual Prices')
-    plt.legend()
-    plot_path = 'static/prediction_plot.png'
-    plt.savefig(plot_path)
-    plt.close()
-    return plot_path
+# def plot_predictions(df, sequence_length, train_predictions, test_predictions):
+#     plt.figure(figsize=(12, 6))
+#     plt.plot(df.index[sequence_length:sequence_length + len(train_predictions)], train_predictions, label='Train Predictions')
+#     plt.plot(df.index[sequence_length + len(train_predictions):], test_predictions, label='Test Predictions')
+#     plt.plot(df['Open'], label='Actual Prices')
+#     plt.legend()
+   
+#     plt.savefig(plot_path)
+#     plt.close()
+#     return plot_path
