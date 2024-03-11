@@ -1,18 +1,16 @@
-# views.py
 
 from django.shortcuts import render
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-from .utils import preprocess_data, train_lstm_model
-from django.shortcuts import render
-import requests
+from django.http import HttpResponse
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
-
-
+from selenium.webdriver.common.by import By
+import requests 
+import pandas as pd 
+import numpy as np
+from tensorflow.keras.layers import LSTM
+from .utils import preprocess_data, train_lstm_model
 from .forms import UploadFileForm
-
-
 import json
 
 def index(request):
@@ -49,11 +47,8 @@ def scrape_news(request):
     response = requests.get(url)
     if response.status_code == 200:
         html_content = response.text
-        
-
         soup = BeautifulSoup(html_content, "html.parser")
-        
-        # Find the elements containing news articles
+    
         news_elements = soup.find_all("div", class_="media-news media-news-md clearfix")
         
         # Extract news titles, links, and images
@@ -75,7 +70,6 @@ def scrape_news(request):
     else:
    
         return render(request, "Stock/error.html")
-
 
 
 def upload_file(request):
@@ -110,3 +104,60 @@ def upload_file(request):
     else:
         form = UploadFileForm()
     return render(request, 'Stock/upload.html', {'form': form})
+
+
+def scrape_and_predict(request):
+    if request.method == 'POST':
+        stock_symbol = request.POST.get('stock_symbol')
+        driver = webdriver.Chrome()
+        url = f"https://merolagani.com/CompanyDetail.aspx?symbol={stock_symbol}#0"
+        driver.get(url)
+       
+        
+        button = driver.find_element(By.XPATH,
+            '//*[@id="ctl00_ContentPlaceHolder1_CompanyDetail1_lnkHistoryTab"]'
+        )
+        button.click()
+       
+        
+        page_source = driver.page_source
+        soup = BeautifulSoup(page_source, 'html.parser')
+        table = soup.find_all('table', class_='table table-bordered table-striped table-hover')
+        
+        data = [[i.text for i in row.find_all('td')] for row in table[0].find_all('tr')]
+        driver.quit()
+        
+        df = pd.DataFrame(data, columns=['Date', 'Open', 'High', 'Low'])
+        df['Date'] = pd.to_datetime(df['Date'])
+        df = df.set_index('Date')
+        df = df.dropna()
+        sequence_length = 10
+        scaler, X_train, y_train = preprocess_data(df, sequence_length)
+        
+        model = train_lstm_model(X_train, y_train)
+        
+        # Get the latest data for prediction
+        latest_data = np.array(data[-sequence_length:], dtype=float)
+        latest_scaled = scaler.transform(latest_data[:, [1]])  
+        latest_scaled = latest_scaled.reshape((1, sequence_length, 1))
+        
+        
+        tomorrow_prediction = model.predict(latest_scaled)
+        tomorrow_prediction = scaler.inverse_transform(tomorrow_prediction)
+  
+        dates = [row[0] for row in data[-50:]]  # Extract dates from the last 50 rows
+        actual_prices = [float(row[1]) for row in data[-50:]]  # Extract 'Open' prices from the last 50 rows
+        predicted_prices = model.predict(X_train[-50:]).flatten().tolist()  # Predicted prices
+        
+        # Prepare context data
+        context = {
+            'stock_symbol': stock_symbol,
+            'dates': dates,
+            'actual_prices': actual_prices,
+            'predicted_prices': predicted_prices,
+            'tomorrow_prediction': tomorrow_prediction[0][0]
+        }
+        
+        return render(request, 'Stock/scrape_predict.html', context)
+    
+    return render(request,'Stock/scrape_predict.html')
