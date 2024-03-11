@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{%block content%}
+{%include 'nav.html'%}
+<h1>Stock Prediction</h1>
+    
+<!-- Form to input stock symbol -->
+<form method="post">
+    {% csrf_token %}
+    <label for="stock_symbol">Enter Stock Symbol:</label>
+    <input type="text" id="stock_symbol" name="stock_symbol">
+    <button type="submit">Predict</button>
+</form>
+
+<!-- Graph to display actual and predicted prices -->
+<canvas id="priceGraph" width="800" height="400"></canvas>
+
+<!-- Tomorrow's predicted price -->
+<h2>Tomorrow's Predicted Price: {{ tomorrow_prediction }}</h2>
+
+<script>
+    // Get data from Django context
+    var dates = {{ dates|safe }};
+    var actualPrices = {{ actual_prices|safe }};
+    var predictedPrices = {{ predicted_prices|safe }};
+    
+    // Create chart using Graph.js
+    var ctx = document.getElementById('priceGraph').getContext('2d');
+    var myChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: dates,
+            datasets: [{
+                label: 'Actual Price',
+                data: actualPrices,
+                borderColor: 'blue',
+                borderWidth: 1,
+                fill: false
+            }, {
+                label: 'Predicted Price',
+                data: predictedPrices,
+                borderColor: 'red',
+                borderWidth: 1,
+                fill: false
+            }]
+        },
+        options: {
+            scales: {
+                x: {
+                    type: 'time',
+                    time: {
+                        unit: 'day'
+                    }
+                },
+                y: {
+                    title: {
+                        display: true,
+                        text: 'Price'
+                    }
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}
