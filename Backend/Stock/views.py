@@ -12,6 +12,8 @@ from tensorflow.keras.layers import LSTM
 from .utils import preprocess_data, train_lstm_model
 from .forms import UploadFileForm
 import json
+import csv
+import time
 
 def index(request):
  
@@ -106,58 +108,61 @@ def upload_file(request):
     return render(request, 'Stock/upload.html', {'form': form})
 
 
-def scrape_and_predict(request):
+def download_data(request):
     if request.method == 'POST':
-        stock_symbol = request.POST.get('stock_symbol')
-        driver = webdriver.Chrome()
-        url = f"https://merolagani.com/CompanyDetail.aspx?symbol={stock_symbol}#0"
-        driver.get(url)
-       
+        StockSymbol = request.POST.get('stock_symbol')
         
+        # Configure Chrome options for headless browsing
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+
+        # Initialize Chrome WebDriver with configured options
+        driver = webdriver.Chrome(options=chrome_options)
+        
+        # Visit the URL
+        url = f"https://merolagani.com/CompanyDetail.aspx?symbol={StockSymbol.upper()}#0"  # Convert symbol to uppercase
+        driver.get(url)
+        print(" ......... Fetching Data From Merolagani ............ ")
+
+        # Wait for the button to be clickable
         button = driver.find_element(By.XPATH,
             '//*[@id="ctl00_ContentPlaceHolder1_CompanyDetail1_lnkHistoryTab"]'
         )
         button.click()
-       
-        
+
+        # Wait for some time to let the page load
+        time.sleep(2)
+
+        # Get page source and parse with BeautifulSoup
         page_source = driver.page_source
         soup = BeautifulSoup(page_source, 'html.parser')
         table = soup.find_all('table', class_='table table-bordered table-striped table-hover')
-        
+
+        # Extract headers and data from the table
+        headers = [i.text.replace('\n', '') for i in table[0].find_all('th')]
         data = [[i.text for i in row.find_all('td')] for row in table[0].find_all('tr')]
+
+        # Quit WebDriver
         driver.quit()
-        
-        df = pd.DataFrame(data, columns=['Date', 'Open', 'High', 'Low'])
-        df['Date'] = pd.to_datetime(df['Date'])
-        df = df.set_index('Date')
-        df = df.dropna()
-        sequence_length = 10
-        scaler, X_train, y_train = preprocess_data(df, sequence_length)
-        
-        model = train_lstm_model(X_train, y_train)
-        
-        # Get the latest data for prediction
-        latest_data = np.array(data[-sequence_length:], dtype=float)
-        latest_scaled = scaler.transform(latest_data[:, [1]])  
-        latest_scaled = latest_scaled.reshape((1, sequence_length, 1))
-        
-        
-        tomorrow_prediction = model.predict(latest_scaled)
-        tomorrow_prediction = scaler.inverse_transform(tomorrow_prediction)
-  
-        dates = [row[0] for row in data[-50:]]  # Extract dates from the last 50 rows
-        actual_prices = [float(row[1]) for row in data[-50:]]  # Extract 'Open' prices from the last 50 rows
-        predicted_prices = model.predict(X_train[-50:]).flatten().tolist()  # Predicted prices
-        
-        # Prepare context data
-        context = {
-            'stock_symbol': stock_symbol,
-            'dates': dates,
-            'actual_prices': actual_prices,
-            'predicted_prices': predicted_prices,
-            'tomorrow_prediction': tomorrow_prediction[0][0]
-        }
-        
-        return render(request, 'Stock/scrape_predict.html', context)
-    
-    return render(request,'Stock/scrape_predict.html')
+
+        print(" ......... Generating CSV File OF Company Data ............ ")
+
+        # Write data to CSV file
+        try:
+            with open(f'{StockSymbol}.csv', 'w', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(headers)
+                writer.writerows(data)
+            print("Done")
+            # Provide the CSV file for download
+            with open(f'{StockSymbol}.csv', 'rb') as csvfile:
+                response = HttpResponse(csvfile, content_type='text/csv')
+                response['Content-Disposition'] = f'attachment; filename="{StockSymbol}.csv"'
+                return response
+        except Exception as e:
+            print(e)
+            return HttpResponse("Error in generating or downloading CSV file")
+    else:
+        return render(request, 'Stock/upload.html')
