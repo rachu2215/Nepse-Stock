@@ -56,12 +56,41 @@
 </head>
 <body>
     <header>Stock Prediction System</header>
-    <form method="post" enctype="multipart/form-data">
+    <form id="uploadForm" method="post" action="{% url 'predict_stock' %}" enctype="multipart/form-data">
         {% csrf_token %}
         {{ form.as_p }}
-        <button type="submit">Upload</button>
-        <!-- <button type="submit">download</button> -->
+        <button type="submit" id="uploadButton">Upload File</button>
     </form>
+    <hr>
+    <form id="downloadForm" method="post" action="{% url 'download_data' %}">
+        {% csrf_token %}
+        <label for="stock_symbol">Enter Stock Symbol:</label>
+        <input type="text" name="stock_symbol" id="stock_symbol" required>
+        <button type="submit" id="downloadButton">Download Data</button>
+    </form>
+
+    <script>
+        // Function to change the form action based on button clicked
+        function changeFormAction(action) {
+            if (action === 'upload') {
+                document.getElementById('uploadForm').action = "{% url 'predict_stock' %}";
+                document.getElementById('downloadForm').action = '';
+            } else if (action === 'download') {
+                document.getElementById('uploadForm').action = '';
+                document.getElementById('downloadForm').action = "{% url 'download_data' %}";
+            }
+        }
+
+        // Add event listeners to the buttons
+        document.getElementById('uploadButton').addEventListener('click', function() {
+            changeFormAction('upload');
+        });
+
+        document.getElementById('downloadButton').addEventListener('click', function() {
+            changeFormAction('download');
+        });
+    </script>
+</form> 
     <footer>
         <p>Contact Details: Stockprediction@gmail.com</p>
         <!-- <p>Personal Details: J, CEO</p> -->
